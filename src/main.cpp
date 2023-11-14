@@ -7,6 +7,7 @@
 #include "Eigen-3.3/Eigen/QR"
 #include "helpers.h"
 #include "json.hpp"
+#include "glog/logging.h"
 
 // for convenience
 using nlohmann::json;
@@ -97,6 +98,8 @@ int main() {
            * TODO: define a path made up of (x,y) points that the car will visit
            *   sequentially every .02 seconds
            */
+
+          LOG(INFO)<<"\nRecieved data";
 
 
           msgJson["next_x"] = next_x_vals;
