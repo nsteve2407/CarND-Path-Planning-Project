@@ -1,4 +1,7 @@
 #include <vector>
+#include <cmath>
+#include "helpers.h"
+#include "glog/logging.h"
 
 using namespace std;
 struct nbr_vehicle
@@ -40,13 +43,17 @@ enum action {KLF,KLS,LCL,LCR};
 
 class Prediction
 {
+    public:
     Prediction();
-    vector<nbr_vehicle> predict_end_state(const vector<nbr_vehicle>& current_state, config& settings);
-    vector<vector<nbr_vehicle>> predict_nbr_trajectory(const vector<nbr_vehicle>& current_state, config& settings);
+    bool predict_one_step_constant_velocity(const nbr_vehicle& start_state, nbr_vehicle& next_state,const config& settings);
+    vector<nbr_vehicle> predict_single_vehicle_states(const nbr_vehicle& current_state, config& settings);
+    vector<nbr_vehicle> predict_nbr_final_states(const vector<nbr_vehicle>& current_state, config& settings);
+    vector<vector<nbr_vehicle>> predict_nbr_trajectories(const vector<nbr_vehicle>& current_state, config& settings);
 
     vector<nbr_vehicle> nbr_vehicle_states_;    
 
 };
+
 
 class BehaviourPlanner
 {

@@ -99,7 +99,27 @@ int main() {
            *   sequentially every .02 seconds
            */
 
-          LOG(INFO)<<"\nRecieved data";
+          LOG(INFO)<<"Sensor Fusion Data";
+          for(auto car : sensor_fusion)
+          {
+            LOG(INFO)<<"Car ID: "<< -1;
+            LOG(INFO)<<"Car X: "<< car_x;
+            LOG(INFO)<<"Car Y: "<< car_y;
+            LOG(INFO)<<"Car V: "<< car_speed;
+            LOG(INFO)<<"Car Yaw: "<< car_yaw;
+            LOG(INFO)<<"Car s: "<< car_s;
+            LOG(INFO)<<"Car d: "<< car_d;
+            LOG(INFO)<<"Car ID: "<< car[0];
+            LOG(INFO)<<"Car X: "<< car[1];
+            LOG(INFO)<<"Car Y: "<< car[2];
+            LOG(INFO)<<"Car Vx: "<< car[3];
+            LOG(INFO)<<"Car Vy: "<< car[4];
+            LOG(INFO)<<"Car s: "<< car[5];
+            LOG(INFO)<<"Car d: "<< car[6];
+
+
+          }
+
 
 
           msgJson["next_x"] = next_x_vals;
