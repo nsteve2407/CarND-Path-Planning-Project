@@ -29,7 +29,7 @@ struct config
 {
     float prediction_horizon; //secs
     float time_resolution; //secs
-    float safety_window; //secs
+    float safety_window = 15.0; //meters in Frenet (s, i.e lenght along the path)
 
 };
 
@@ -39,7 +39,7 @@ struct point
     float y; //m
 };
 
-enum action {KLF,KLS,LCL,LCR};
+enum action {KLSU,KLSD,LCL,LCR};
 
 class Prediction
 {
@@ -57,9 +57,17 @@ class Prediction
 
 class BehaviourPlanner
 {
+    public:
     BehaviourPlanner();
+    int match_vehicle_to_lane(const nbr_vehicle& vehicle_state);
+    int match_vehicle_to_lane(const vehicle_state& ego_state);
+
+    bool in_safety_window(const vehicle_state& localization,const nbr_vehicle& nbr_vehicle_state,const config& settings);
     action next_action(const vehicle_state& localization,const vector<nbr_vehicle>& nbrs_last_state,const config& settings);
     action next_action(const vehicle_state& localization,const vector<vector<nbr_vehicle>>& nbrs_trajectories,const config& settings);
+    double current_velocity_;
+    vector<double> map_waypoints_x_;
+    vector<double> map_waypoints_y_;
 
 };
 

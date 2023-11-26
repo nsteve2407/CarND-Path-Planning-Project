@@ -84,3 +84,133 @@ vector<nbr_vehicle> Prediction::predict_nbr_final_states(const vector<nbr_vehicl
     return end_states;    
 }
 
+
+int BehaviourPlanner::match_vehicle_to_lane(const nbr_vehicle& vehicle_state)
+{
+    if (vehicle_state.d<0.0 || vehicle_state.d>12.0)
+    {
+        return -1;//Oncoming traffic
+    }
+    // Lanes are 4m wide
+    else if(vehicle_state.d>0.0 && vehicle_state.d<4.0)
+    {
+        return 0;//Left lane
+    }
+    else if(vehicle_state.d>4.0 && vehicle_state.d<8.0)
+    {
+        return 0;//Middle lane traffic
+    }
+    else if(vehicle_state.d>8.0 && vehicle_state.d<12.0)
+    {
+        return 0;//Right lane traffic
+    }
+
+}
+
+int BehaviourPlanner::match_vehicle_to_lane(const vehicle_state& vehicle_state)
+{
+    if (vehicle_state.d<0.0 || vehicle_state.d>12.0)
+    {
+        return -1;//Oncoming traffic
+    }
+    // Lanes are 4m wide
+    else if(vehicle_state.d>0.0 && vehicle_state.d<4.0)
+    {
+        return 0;//Left lane
+    }
+    else if(vehicle_state.d>4.0 && vehicle_state.d<8.0)
+    {
+        return 0;//Middle lane traffic
+    }
+    else if(vehicle_state.d>8.0 && vehicle_state.d<12.0)
+    {
+        return 0;//Right lane traffic
+    }
+
+}
+
+bool BehaviourPlanner::in_safety_window(const vehicle_state& localization,const nbr_vehicle& nbr_vehicle_state,const config& settings)
+{
+    if(nbr_vehicle_state.s<localization.s+settings.safety_window)
+    {
+        return true;
+    }
+
+    else if(nbr_vehicle_state.s>localization.s-settings.safety_window)
+    {
+        return true;
+    }
+
+    return false;
+
+}
+
+action BehaviourPlanner::next_action(const vehicle_state& localization,const vector<nbr_vehicle>& nbrs_last_state,const config& settings)
+{
+    int currnet_vehicle_lane = match_vehicle_to_lane(localization);
+    vector<bool> lane_blocked_status={false,false,false};
+
+    for(auto vehicle: nbrs_last_state)
+    {
+        int lane = match_vehicle_to_lane(vehicle);
+        if(!lane_blocked_status[lane])
+        {
+            if(in_safety_window(localization,vehicle,settings))
+            {
+                lane_blocked_status[lane] = true;
+            }
+        }
+    }
+    // If current lane not blocked
+    if(!lane_blocked_status[currnet_vehicle_lane])
+    {
+        return KLSU; //Keep Lane Speed Up
+    }
+    // If current lane is blocked
+    if(lane_blocked_status[currnet_vehicle_lane])
+    {
+        // If center lane check left and right
+        if(currnet_vehicle_lane==1)
+        {
+            if(!lane_blocked_status[0])
+            {
+                return LCL;
+            }
+            else if(!lane_blocked_status[2])
+            {
+                return LCR;
+            }
+            else
+            {
+                return KLSD;//Keep Lane Slow down
+            }
+        }
+
+        // If Left lane check center
+        if(currnet_vehicle_lane==0)
+        {
+            if(!lane_blocked_status[1])
+            {
+                return LCR;
+            }
+            else
+            {
+                return KLSD;//Keep Lane Slow down
+            }
+        }
+        // If right lane check center
+        if(currnet_vehicle_lane==2)
+        {
+            if(!lane_blocked_status[1])
+            {
+                return LCL;
+            }
+            else
+            {
+                return KLSD;//Keep Lane Slow down
+            }
+        }
+    }
+    
+}
+
