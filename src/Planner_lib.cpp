@@ -1,6 +1,5 @@
 #include "Planner_lib.h"
 
-
 // struct nbr_vehicle
 // {
 //     int id;
@@ -12,205 +11,163 @@
 //     double s;
 // };
 
-bool Prediction::predict_one_step_constant_velocity(const nbr_vehicle& start_state, nbr_vehicle& next_state,const config& settings)
-{
-    try
-    {
+bool Prediction::predict_one_step_constant_velocity(
+    const nbr_vehicle &start_state, nbr_vehicle &next_state,
+    const config &settings) {
+  try {
     nbr_vehicle next_state = start_state;
     // Constat Velocity propogation
-    next_state.x = next_state.x + next_state.vx*settings.time_resolution;
-    next_state.y = next_state.y + next_state.vy*settings.time_resolution;
+    next_state.x = next_state.x + next_state.vx * settings.time_resolution;
+    next_state.y = next_state.y + next_state.vy * settings.time_resolution;
 
     // To do : Frenet update
 
-
     return true;
-    }
-    catch(std::exception e)
-    {
-        LOG(ERROR)<<"Error in single step prediciton";
-        return false;
-    }
-}
-
-
-vector<nbr_vehicle> Prediction::predict_single_vehicle_states(const nbr_vehicle& current_state, config& settings)
-{
-    // Constant Velocity Motion Model
-    vector<nbr_vehicle> state_predictions(settings.prediction_horizon/settings.time_resolution);
-
-    nbr_vehicle state = current_state;
-    nbr_vehicle next_state;
-    bool success;
-
-    for(int i=0;i<state_predictions.size();i++)
-    {
-        success =  predict_one_step_constant_velocity(state,next_state,settings);
-        state_predictions[0] = next_state;
-        state = next_state;
-    }
-
-    return state_predictions;
-}
-
-
-
-vector<vector<nbr_vehicle>> Prediction::predict_nbr_trajectories(const vector<nbr_vehicle>& current_state, config& settings)
-{
-    // One trajectory for each vehicle in current state
-    vector<vector<nbr_vehicle>> trajectories(current_state.size());
-
-    // Iterate over all vehicles 
-    for(int i=0;i<current_state.size();i++)
-    {
-        trajectories[i] = predict_single_vehicle_states(current_state[i],settings);
-    }
-
-    return trajectories;
-
-}
-
-//Variant of predict_nbr_trajectories, that retruns only the state at the end of the time window
-vector<nbr_vehicle> Prediction::predict_nbr_final_states(const vector<nbr_vehicle>& current_state, config& settings)
-{
-    vector<vector<nbr_vehicle>> trajectories = predict_nbr_trajectories(current_state,settings);
-    vector<nbr_vehicle> end_states(current_state.size());
-
-    for(int i=0;i<trajectories.size();i++)
-    {
-        end_states[i] = trajectories[i][trajectories[i].size()-1];
-    }
-
-    return end_states;    
-}
-
-
-int BehaviourPlanner::match_vehicle_to_lane(const nbr_vehicle& vehicle_state)
-{
-    if (vehicle_state.d<0.0 || vehicle_state.d>12.0)
-    {
-        return -1;//Oncoming traffic
-    }
-    // Lanes are 4m wide
-    else if(vehicle_state.d>0.0 && vehicle_state.d<4.0)
-    {
-        return 0;//Left lane
-    }
-    else if(vehicle_state.d>4.0 && vehicle_state.d<8.0)
-    {
-        return 0;//Middle lane traffic
-    }
-    else if(vehicle_state.d>8.0 && vehicle_state.d<12.0)
-    {
-        return 0;//Right lane traffic
-    }
-
-}
-
-int BehaviourPlanner::match_vehicle_to_lane(const vehicle_state& vehicle_state)
-{
-    if (vehicle_state.d<0.0 || vehicle_state.d>12.0)
-    {
-        return -1;//Oncoming traffic
-    }
-    // Lanes are 4m wide
-    else if(vehicle_state.d>0.0 && vehicle_state.d<4.0)
-    {
-        return 0;//Left lane
-    }
-    else if(vehicle_state.d>4.0 && vehicle_state.d<8.0)
-    {
-        return 0;//Middle lane traffic
-    }
-    else if(vehicle_state.d>8.0 && vehicle_state.d<12.0)
-    {
-        return 0;//Right lane traffic
-    }
-
-}
-
-bool BehaviourPlanner::in_safety_window(const vehicle_state& localization,const nbr_vehicle& nbr_vehicle_state,const config& settings)
-{
-    if(nbr_vehicle_state.s<localization.s+settings.safety_window)
-    {
-        return true;
-    }
-
-    else if(nbr_vehicle_state.s>localization.s-settings.safety_window)
-    {
-        return true;
-    }
-
+  } catch (std::exception e) {
+    LOG(ERROR) << "Error in single step prediciton";
     return false;
-
+  }
 }
 
-action BehaviourPlanner::next_action(const vehicle_state& localization,const vector<nbr_vehicle>& nbrs_last_state,const config& settings)
-{
-    int currnet_vehicle_lane = match_vehicle_to_lane(localization);
-    vector<bool> lane_blocked_status={false,false,false};
+vector<nbr_vehicle>
+Prediction::predict_single_vehicle_states(const nbr_vehicle &current_state,
+                                          config &settings) {
+  // Constant Velocity Motion Model
+  vector<nbr_vehicle> state_predictions(settings.prediction_horizon /
+                                        settings.time_resolution);
 
-    for(auto vehicle: nbrs_last_state)
-    {
-        int lane = match_vehicle_to_lane(vehicle);
-        if(!lane_blocked_status[lane])
-        {
-            if(in_safety_window(localization,vehicle,settings))
-            {
-                lane_blocked_status[lane] = true;
-            }
-        }
-    }
-    // If current lane not blocked
-    if(!lane_blocked_status[currnet_vehicle_lane])
-    {
-        return KLSU; //Keep Lane Speed Up
-    }
-    // If current lane is blocked
-    if(lane_blocked_status[currnet_vehicle_lane])
-    {
-        // If center lane check left and right
-        if(currnet_vehicle_lane==1)
-        {
-            if(!lane_blocked_status[0])
-            {
-                return LCL;
-            }
-            else if(!lane_blocked_status[2])
-            {
-                return LCR;
-            }
-            else
-            {
-                return KLSD;//Keep Lane Slow down
-            }
-        }
+  nbr_vehicle state = current_state;
+  nbr_vehicle next_state;
+  bool success;
 
-        // If Left lane check center
-        if(currnet_vehicle_lane==0)
-        {
-            if(!lane_blocked_status[1])
-            {
-                return LCR;
-            }
-            else
-            {
-                return KLSD;//Keep Lane Slow down
-            }
-        }
-        // If right lane check center
-        if(currnet_vehicle_lane==2)
-        {
-            if(!lane_blocked_status[1])
-            {
-                return LCL;
-            }
-            else
-            {
-                return KLSD;//Keep Lane Slow down
-            }
-        }
-    }
-    
+  for (int i = 0; i < state_predictions.size(); i++) {
+    success = predict_one_step_constant_velocity(state, next_state, settings);
+    state_predictions[0] = next_state;
+    state = next_state;
+  }
+
+  return state_predictions;
 }
 
+vector<vector<nbr_vehicle>>
+Prediction::predict_nbr_trajectories(const vector<nbr_vehicle> &current_state,
+                                     config &settings) {
+  // One trajectory for each vehicle in current state
+  vector<vector<nbr_vehicle>> trajectories(current_state.size());
+
+  // Iterate over all vehicles
+  for (int i = 0; i < current_state.size(); i++) {
+    trajectories[i] = predict_single_vehicle_states(current_state[i], settings);
+  }
+
+  return trajectories;
+}
+
+// Variant of predict_nbr_trajectories, that retruns only the state at the end
+// of the time window
+vector<nbr_vehicle>
+Prediction::predict_nbr_final_states(const vector<nbr_vehicle> &current_state,
+                                     config &settings) {
+  vector<vector<nbr_vehicle>> trajectories =
+      predict_nbr_trajectories(current_state, settings);
+  vector<nbr_vehicle> end_states(current_state.size());
+
+  for (int i = 0; i < trajectories.size(); i++) {
+    end_states[i] = trajectories[i][trajectories[i].size() - 1];
+  }
+
+  return end_states;
+}
+
+int BehaviourPlanner::match_vehicle_to_lane(const nbr_vehicle &vehicle_state) {
+  if (vehicle_state.d < 0.0 || vehicle_state.d > 12.0) {
+    return -1; // Oncoming traffic
+  }
+  // Lanes are 4m wide
+  else if (vehicle_state.d > 0.0 && vehicle_state.d < 4.0) {
+    return 0; // Left lane
+  } else if (vehicle_state.d > 4.0 && vehicle_state.d < 8.0) {
+    return 0; // Middle lane traffic
+  } else if (vehicle_state.d > 8.0 && vehicle_state.d < 12.0) {
+    return 0; // Right lane traffic
+  }
+}
+
+int BehaviourPlanner::match_vehicle_to_lane(
+    const vehicle_state &vehicle_state) {
+  if (vehicle_state.d < 0.0 || vehicle_state.d > 12.0) {
+    return -1; // Oncoming traffic
+  }
+  // Lanes are 4m wide
+  else if (vehicle_state.d > 0.0 && vehicle_state.d < 4.0) {
+    return 0; // Left lane
+  } else if (vehicle_state.d > 4.0 && vehicle_state.d < 8.0) {
+    return 0; // Middle lane traffic
+  } else if (vehicle_state.d > 8.0 && vehicle_state.d < 12.0) {
+    return 0; // Right lane traffic
+  }
+}
+
+bool BehaviourPlanner::in_safety_window(const vehicle_state &localization,
+                                        const nbr_vehicle &nbr_vehicle_state,
+                                        const config &settings) {
+  if (nbr_vehicle_state.s < localization.s + settings.safety_window) {
+    return true;
+  }
+
+  else if (nbr_vehicle_state.s > localization.s - settings.safety_window) {
+    return true;
+  }
+
+  return false;
+}
+
+action BehaviourPlanner::next_action(const vehicle_state &localization,
+                                     const vector<nbr_vehicle> &nbrs_last_state,
+                                     const config &settings) {
+  currnet_vehicle_lane = match_vehicle_to_lane(localization);
+  vector<bool> lane_blocked_status = {false, false, false};
+
+  for (auto vehicle : nbrs_last_state) {
+    int lane = match_vehicle_to_lane(vehicle);
+    if (!lane_blocked_status[lane]) {
+      if (in_safety_window(localization, vehicle, settings)) {
+        lane_blocked_status[lane] = true;
+      }
+    }
+  }
+  // If current lane not blocked
+  if (!lane_blocked_status[currnet_vehicle_lane]) {
+    return KLSU; // Keep Lane Speed Up
+  }
+  // If current lane is blocked
+  if (lane_blocked_status[currnet_vehicle_lane]) {
+    // If center lane check left and right
+    if (currnet_vehicle_lane == 1) {
+      if (!lane_blocked_status[0]) {
+        return LCL;
+      } else if (!lane_blocked_status[2]) {
+        return LCR;
+      } else {
+        return KLSD; // Keep Lane Slow down
+      }
+    }
+
+    // If Left lane check center
+    if (currnet_vehicle_lane == 0) {
+      if (!lane_blocked_status[1]) {
+        return LCR;
+      } else {
+        return KLSD; // Keep Lane Slow down
+      }
+    }
+    // If right lane check center
+    if (currnet_vehicle_lane == 2) {
+      if (!lane_blocked_status[1]) {
+        return LCL;
+      } else {
+        return KLSD; // Keep Lane Slow down
+      }
+    }
+  }
+}
