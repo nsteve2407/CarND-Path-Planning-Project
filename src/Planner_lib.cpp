@@ -227,7 +227,7 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
   while (pq.size() > 0) {
     auto n = pq.top();
     pq.pop();
-    node_id_start = state2string_round(n.state_);
+    node_id_start = state2string_no_round(n.state_);
 
     for (int action = 0; action < 3; action++) {
       dest = dubins_trasition_function(n.state_, v, action, turn_radius);
@@ -239,17 +239,13 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
 
         // Check if reached goal
         if (reached_goal(dest, goal_state_f)) {
-          optimal_path[node_id_start] = node_id;
+          optimal_path[node_id_start] = state2string_no_round(dest);
           return generate_traj(optimal_path, start_state_id, goal_state_id);
         }
 
         // Caculate cost
         node_cost = n.wt_ + cost(n.state_, dest, goal_state);
 
-        if (node_cost < node_min_cost) {
-          node_min_cost = node_cost;
-          optimal_child_node_id = node_id;
-        }
         // Check if visited
         if (seen_.find(node_id) == seen_.end()) {
           // Not see before so add
@@ -262,6 +258,10 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
             // Add to pq if fist time or if modified update the pq value?
             pq.push(node(node_cost, dest));
           }
+        }
+        if (node_cost < node_min_cost) {
+          node_min_cost = node_cost;
+          optimal_child_node_id = state2string_no_round(dest);
         }
       }
     }
@@ -352,4 +352,32 @@ MotionPlanner::generate_traj(const unordered_map<string, string> &p,
   }
 
   return points;
+}
+
+// Rounding based on resolution
+string MotionPlanner::state2string_round(const State &s) {
+  float x = round(s.x / res_x) * res_x;
+  float y = round(s.y / res_y) * res_y;
+  float theta = round(s.theta / res_theta) * res_theta;
+
+  return to_string(x) + "," + to_string(y) + "," + to_string(theta);
+}
+
+string state2string_no_round(const State &s) {
+  return to_string(round_to<float>(s.x, 0.01)) + "," +
+         to_string(round_to<float>(s.y, 0.01)) + "," +
+         to_string(round_to<float>(s.theta, 0.01)) ",";
+}
+
+void string2state(const string &s, float &x, float &y) {
+  stringstream ss(s);
+
+  // Temporary string to hold each token
+  std::string word;
+
+  // Use getline to split the string at commas
+  getline(ss, word, ',');
+  x = stof(word);
+  getline(ss, word, ',');
+  y = stof(word);
 }

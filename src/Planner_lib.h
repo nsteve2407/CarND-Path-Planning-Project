@@ -7,6 +7,11 @@
 
 using namespace std;
 // typedef pair<int, State> node;
+template <typename T>
+
+T round_to(T value, T precision = 1.0) {
+  return std::round(value / precision) * precision;
+}
 
 class node {
 public:
@@ -140,9 +145,9 @@ public:
   void string2state(const string &s, float &x, float &y);
 
   // private:
-  float res_x;
-  float res_y;
-  float res_theta;
+  float res_x = 1.0;
+  float res_y = 1.0;
+  float res_theta = 10.0 * (180 / 3.14);
   float turn_radius = 8.0;
   float action_change_cost_ = 4.0;
   float obstacle_distacne_cost_wt_ = 10.0;
@@ -171,5 +176,3 @@ public:
   vector<point> generate_traj(const unordered_map<string, string> &p,
                               const string &start, const string &end);
 };
-}
-;
