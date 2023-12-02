@@ -51,6 +51,7 @@ struct config {
 struct point {
   float x; // m
   float y; // m
+  point(const float &x_, const float &y_) : x(x_), y(y_){};
 };
 
 enum action { KLSU, KLSD, LCL, LCR };
@@ -81,9 +82,23 @@ struct State {
   float v;
   int prev_action; // What action was taken to reach this state:
                    // {0,1,2}{left,straight,right}
+  float min_obst_dist = 100000.0;
   State(float x_, float y_, float theta_, float v_, int action_)
       : x(x_), y(y_), theta(theta_), v(v_), prev_action(action_){};
 };
+
+double euclideanDistance(const State &pose1, const vector<double> pose2) {
+  // Calculate the differences in x, y, and theta
+  double dx = pose1.x - pose2[0];
+  double dy = pose1.y - pose2[1];
+
+  // If theta represents angles in radians, you might need to handle the
+  // periodic nature of angles
+  double dtheta = std::fmod(pose1.theta - pose2[2] + M_PI, 2 * M_PI) - M_PI;
+
+  // Calculate the Euclidean distance
+  return std::sqrt(dx * dx + dy * dy + dtheta * dtheta);
+}
 
 class BehaviourPlanner {
 public:
@@ -124,10 +139,18 @@ public:
   string state2string_no_round(const State &s);
   void string2state(const string &s, float &x, float &y);
 
-private:
+  // private:
   float res_x;
   float res_y;
   float res_theta;
+  float turn_radius = 8.0;
+  float action_change_cost_ = 4.0;
+  float obstacle_distacne_cost_wt_ = 10.0;
+  float h_cost_wt_ = 6.0;
+  float dt_ = 0.02;
+
+  unordered_map<string, float> seen_;
+  unordered_map<string, string> optimal_path;
 
   vector<nbr_vehicle> obstacles;
 
@@ -141,8 +164,12 @@ private:
   State dubins_trasition_function(const State &start, float v_cmd, int &action,
                                   float &radius);
 
-  bool check_valid(const State &State);
+  bool check_valid(State &State, vector<float> &limits);
   bool reached_goal(const State &s, const State &goal);
   float cost(const State &start, const State &end, vector<double> &goal);
   bool check_visited(const State &s);
+  vector<point> generate_traj(const unordered_map<string, string> &p,
+                              const string &start, const string &end);
 };
+}
+;

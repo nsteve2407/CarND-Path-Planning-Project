@@ -180,7 +180,6 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
   int lane = match_vehicle_to_lane(localization);
   float delta_v = 0.0;
   float goal_lookup_distance = 30.0;
-  float turn_radius = 8.0;
 
   if (a == LCL) {
     lane -= 1;
@@ -202,33 +201,155 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
   float min_y = min<float>(float(goal_state[1]), localization.y);
   float max_y = max<float>(float(goal_state[1]), localization.y);
 
-  float v = localization.speed;
+  vector<float> limits = {min_x, max_x, min_y, max_y};
+
+  float v = min<float>(localization.speed + delta_v, 50.0 * 0.277);
+  v = max<float>(localization.speed + delta_v, 0.277);
 
   priority_queue<node, vector<node>, CompareNode> pq;
 
-  pq.push(node(0.0,
-               State(localization.x, localization.y, localization.yaw, v, -1)));
+  State start_state =
+      State(localization.x, localization.y, localization.yaw, v, -1);
 
+  State goal_state_f =
+      State(goal_state[0], goal_state[1], goal_state[2], v, -1);
+  string goal_state_id = state2string_round(goal_state_f);
+
+  pq.push(node(0.0, start_state));
+  string start_state_id = state2string_round(start_state);
+
+  float node_cost = 1000000.0;
+  float node_min_cost = 1000000.0;
+
+  State dest(0.0, 0.0, 0.0, 0.0, -1);
+  string node_id, node_id_start;
+  string optimal_child_node_id;
   while (pq.size() > 0) {
     auto n = pq.top();
     pq.pop();
+    node_id_start = state2string_round(n.state_);
 
     for (int action = 0; action < 3; action++) {
-      auto dest = dubins_trasition_function(n.state_, v, action, turn_radius);
-
-      // Check if valid
-
-      // Check if reached goal`
-
-      // Caculate cost
-
-      // Check if visited
+      dest = dubins_trasition_function(n.state_, v, action, turn_radius);
+      dest.prev_action = action;
       // Convert to string
-      // If visited compare costs and adjust cost and parent to min
+      node_id = state2string_round(dest);
+      // Check if valid
+      if (check_valid(dest, limits)) {
 
-      //  IF not visited add it
+        // Check if reached goal
+        if (reached_goal(dest, goal_state_f)) {
+          optimal_path[node_id_start] = node_id;
+          return generate_traj(optimal_path, start_state_id, goal_state_id);
+        }
 
-      // Add to pq if fist time or if modified update the pq value?
+        // Caculate cost
+        node_cost = n.wt_ + cost(n.state_, dest, goal_state);
+
+        if (node_cost < node_min_cost) {
+          node_min_cost = node_cost;
+          optimal_child_node_id = node_id;
+        }
+        // Check if visited
+        if (seen_.find(node_id) == seen_.end()) {
+          // Not see before so add
+          seen_[node_id] = node_cost;
+          pq.push(node(node_cost, dest));
+          // If visited compare costs and adjust cost and parent to min
+        } else {
+          if (node_cost < seen_[node_id]) {
+            seen_[node_id] = node_cost;
+            // Add to pq if fist time or if modified update the pq value?
+            pq.push(node(node_cost, dest));
+          }
+        }
+      }
+    }
+    optimal_path[node_id_start] = optimal_child_node_id;
+  }
+}
+
+State MotionPlanner::dubins_trasition_function(const State &start, float v,
+                                               int &action, float &r) {
+  // Calculate the change in position and orientation
+  if (action != 1) {
+    if (action == 2) {
+      r = r * -1.0;
+    }
+    float deltaTheta = v / r * dt_;
+    float deltaX = r * (1 - std::cos(deltaTheta));
+    float deltaY = r * std::sin(deltaTheta);
+
+    // Calculate the new position and orientation
+    float newX = start.x + deltaX * std::cos(start.theta) -
+                 deltaY * std::sin(start.theta);
+    float newY = start.y + deltaX * std::sin(start.theta) +
+                 deltaY * std::cos(start.theta);
+    float newTheta = start.theta + deltaTheta;
+    return State(newX, newY, newTheta, v, action);
+  }
+
+  if (action == 1) {
+    float deltaTheta = 0.0;
+    float deltaX = v * cos(start.theta) * dt_;
+    float deltaY = v * sin(start.theta) * dt_;
+    float newX = start.x + deltaX;
+    float newY = start.y + deltaY;
+    float newTheta = start.theta + deltaTheta;
+    return State(newX, newY, newTheta, v, action);
+  }
+}
+
+bool MotionPlanner::check_valid(State &State, vector<float> &limits) {
+  if (State.x > limits[0] && State.x < limits[1] && State.y > limits[2] &&
+      State.y < limits[3]) {
+    for (auto car : obstacles) {
+      State.min_obst_dist = min<float>(
+          State.min_obst_dist, distance(State.x, State.y, car.x, car.y));
+    }
+    if (State.min_obst_dist < 3.0) {
+      return true;
     }
   }
+  return false;
+}
+
+bool MotionPlanner::reached_goal(const State &s, const State &goal) {
+  if (round(s.x) == round(goal.x) && round(s.y) == round(goal.y) &&
+      round(s.theta * (180 / 3.14)) == round(goal.theta * (180 / 3.14))) {
+    return true;
+  }
+  return false;
+}
+
+float MotionPlanner::cost(const State &start, const State &end,
+                          vector<double> &goal) {
+  float cost_ = 0.0;
+  if (start.prev_action != end.prev_action) {
+    cost_ += action_change_cost_;
+  }
+  cost_ = cost_ + (end.min_obst_dist * obstacle_distacne_cost_wt_) +
+          h_cost_wt_ * (euclideanDistance(end, goal));
+  // Add acceleration(lateral) cost?
+  return cost_;
+}
+
+vector<point>
+MotionPlanner::generate_traj(const unordered_map<string, string> &p,
+                             const string &start, const string &end) {
+  point pt(0.0, 0.0);
+  vector<point> points;
+  float x, y;
+  string node_id = start;
+  string next_node;
+  string2state(node_id, pt.x, pt.y);
+  points.push_back(pt);
+  while (node_id != end) {
+    next_node = optimal_path[node_id];
+    string2state(next_node, pt.x, pt.y);
+    points.push_back(pt);
+    node_id = next_node;
+  }
+
+  return points;
 }
