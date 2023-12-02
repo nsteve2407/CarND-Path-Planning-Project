@@ -171,3 +171,64 @@ action BehaviourPlanner::next_action(const vehicle_state &localization,
     }
   }
 }
+
+vector<point>
+MotionPlanner::generate_motion_plan(const vehicle_state &localization,
+                                    const vector<point> &prev_plan,
+                                    const action &a) {
+  // Get goal point from localization info, waypoints and action
+  int lane = match_vehicle_to_lane(localization);
+  float delta_v = 0.0;
+  float goal_lookup_distance = 30.0;
+  float turn_radius = 8.0;
+
+  if (a == LCL) {
+    lane -= 1;
+  } else if (a == LCR) {
+    lane += 1;
+  } else if (a == KLSU) {
+    delta_v = 0.224;
+  } else {
+    delta_v = -0.224;
+  }
+
+  // goal as (x,y,theta)
+  vector<double> goal_state =
+      getXY(localization.s + goal_lookup_distance, 2 + 4 * lane,
+            map_waypoints_s_, map_waypoints_x_, map_waypoints_y_);
+
+  float min_x = min<float>(float(goal_state[0]), localization.x);
+  float max_x = max<float>(float(goal_state[0]), localization.x);
+  float min_y = min<float>(float(goal_state[1]), localization.y);
+  float max_y = max<float>(float(goal_state[1]), localization.y);
+
+  float v = localization.speed;
+
+  priority_queue<node, vector<node>, CompareNode> pq;
+
+  pq.push(node(0.0,
+               State(localization.x, localization.y, localization.yaw, v, -1)));
+
+  while (pq.size() > 0) {
+    auto n = pq.top();
+    pq.pop();
+
+    for (int action = 0; action < 3; action++) {
+      auto dest = dubins_trasition_function(n.state_, v, action, turn_radius);
+
+      // Check if valid
+
+      // Check if reached goal`
+
+      // Caculate cost
+
+      // Check if visited
+      // Convert to string
+      // If visited compare costs and adjust cost and parent to min
+
+      //  IF not visited add it
+
+      // Add to pq if fist time or if modified update the pq value?
+    }
+  }
+}

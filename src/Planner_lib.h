@@ -1,9 +1,28 @@
 #include "glog/logging.h"
 #include "helpers.h"
+#include <bits/stdc++.h>
 #include <cmath>
+#include <unordered_map>
 #include <vector>
 
 using namespace std;
+// typedef pair<int, State> node;
+
+class node {
+public:
+  node(float wt, State s) : wt_(wt), state_(s){};
+  float wt_;
+  State state_;
+};
+
+struct CompareNode {
+  bool operator()(node const &p1, node const &p2) {
+    // return "true" if "p1" is ordered
+    // before "p2", for example:
+    return p1.wt_ < p2.wt_;
+  }
+};
+
 struct nbr_vehicle {
   int id;
   double x;
@@ -55,6 +74,17 @@ public:
   vector<nbr_vehicle> nbr_vehicle_states_;
 };
 
+struct State {
+  float x;
+  float y;
+  float theta; // radians
+  float v;
+  int prev_action; // What action was taken to reach this state:
+                   // {0,1,2}{left,straight,right}
+  State(float x_, float y_, float theta_, float v_, int action_)
+      : x(x_), y(y_), theta(theta_), v(v_), prev_action(action_){};
+};
+
 class BehaviourPlanner {
 public:
   BehaviourPlanner();
@@ -78,6 +108,7 @@ public:
   int currnet_vehicle_lane;
 };
 
+// Motion PLanner that uses Hybrid A* + Dubins Path
 class MotionPlanner : BehaviourPlanner {
   MotionPlanner(vector<double> map_x, vector<double> map_y,
                 vector<double> map_s)
@@ -88,4 +119,30 @@ public:
   vector<point> generate_motion_plan(const vehicle_state &localization,
                                      const vector<point> &prev_plan,
                                      const action &a);
+
+  string state2string_round(const State &s);
+  string state2string_no_round(const State &s);
+  void string2state(const string &s, float &x, float &y);
+
+private:
+  float res_x;
+  float res_y;
+  float res_theta;
+
+  vector<nbr_vehicle> obstacles;
+
+  int get_lane(const vehicle_state &loc);
+
+  // Unordered map to store visited nodes
+  unordered_map<string, float>
+      visited_map; // String here is discretized version of state "x,y,teta"
+  // Unordered map to store parent nodes and retrieve optimal path
+  unordered_map<string, string> optimal_parent;
+  State dubins_trasition_function(const State &start, float v_cmd, int &action,
+                                  float &radius);
+
+  bool check_valid(const State &State);
+  bool reached_goal(const State &s, const State &goal);
+  float cost(const State &start, const State &end, vector<double> &goal);
+  bool check_visited(const State &s);
 };
