@@ -51,7 +51,11 @@ link_directories(/usr/local/Cellar/libuv/1.11.0/lib)
 
 endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin") 
 
+# include(src/Planner_lib.h)
+# include_directories(/home/steve/git/CarND-Path-Planning-Project/src)
+# add_library(planner_lib src/Planner_lib.cpp)
+
 
 add_executable(path_planning ${sources})
 
-target_link_libraries(path_planning z ssl uv uWS glog   )
+target_link_libraries(path_planning z ssl uv uWS glog)
