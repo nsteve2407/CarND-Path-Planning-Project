@@ -1,13 +1,14 @@
-#include <uWS/uWS.h>
+#include "Eigen-3.3/Eigen/Core"
+#include "Eigen-3.3/Eigen/QR"
+#include "Planner_lib.h"
+#include "glog/logging.h"
+#include "helpers.h"
+#include "json.hpp"
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <uWS/uWS.h>
 #include <vector>
-#include "Eigen-3.3/Eigen/Core"
-#include "Eigen-3.3/Eigen/QR"
-#include "helpers.h"
-#include "json.hpp"
-#include "glog/logging.h"
 
 // for convenience
 using nlohmann::json;
@@ -28,9 +29,7 @@ int main() {
   string map_file_ = "../data/highway_map.csv";
   // The max s value before wrapping around the track back to 0
   double max_s = 6945.554;
-
   std::ifstream in_map_(map_file_.c_str(), std::ifstream::in);
-
   string line;
   while (getline(in_map_, line)) {
     std::istringstream iss(line);
@@ -51,10 +50,27 @@ int main() {
     map_waypoints_dy.push_back(d_y);
   }
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy]
-              (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
-               uWS::OpCode opCode) {
+  // Init  planning layers
+  Prediction predict;
+  BehaviourPlanner behavior(map_waypoints_x, map_waypoints_y);
+
+  config settings;
+  settings.time_resolution = 0.02;
+  settings.prediction_horizon = 0.5;
+
+  // Variable initialization
+  vector<nbr_vehicle> nbr_current_state;
+
+  MotionPlanner motion_planner(map_waypoints_x, map_waypoints_y,
+                               map_waypoints_s);
+
+  std::ifstream in_map_(map_file_.c_str(), std::ifstream::in);
+
+  h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s,
+               &map_waypoints_dx, &map_waypoints_dy, &nbr_current_state,
+               &predict, &behavior, &motion_planner,
+               &settings](uWS::WebSocket<uWS::SERVER> ws, char *data,
+                          size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -64,12 +80,12 @@ int main() {
 
       if (s != "") {
         auto j = json::parse(s);
-        
+
         string event = j[0].get<string>();
-        
+
         if (event == "telemetry") {
           // j[1] is the data JSON object
-          
+
           // Main car's localization Data
           double car_x = j[1]["x"];
           double car_y = j[1]["y"];
@@ -78,14 +94,21 @@ int main() {
           double car_yaw = j[1]["yaw"];
           double car_speed = j[1]["speed"];
 
+          vehicle_state ego_state(car_x, car_y, car_yaw, car_speed, car_d,
+                                  car_s);
+
           // Previous path data given to the Planner
           auto previous_path_x = j[1]["previous_path_x"];
           auto previous_path_y = j[1]["previous_path_y"];
-          // Previous path's end s and d values 
+          vector<vector<double>> prev_path(2);
+          prev_path.push_back(previous_path_x);
+          prev_path.push_back(previous_path_y);
+
+          // Previous path's end s and d values
           double end_path_s = j[1]["end_path_s"];
           double end_path_d = j[1]["end_path_d"];
 
-          // Sensor Fusion Data, a list of all other cars on the same side 
+          // Sensor Fusion Data, a list of all other cars on the same side
           //   of the road.
           auto sensor_fusion = j[1]["sensor_fusion"];
 
@@ -99,42 +122,40 @@ int main() {
            *   sequentially every .02 seconds
            */
 
-          LOG(INFO)<<"Sensor Fusion Data";
-          for(auto car : sensor_fusion)
-          {
-            LOG(INFO)<<"Car ID: "<< -1;
-            LOG(INFO)<<"Car X: "<< car_x;
-            LOG(INFO)<<"Car Y: "<< car_y;
-            LOG(INFO)<<"Car V: "<< car_speed;
-            LOG(INFO)<<"Car Yaw: "<< car_yaw;
-            LOG(INFO)<<"Car s: "<< car_s;
-            LOG(INFO)<<"Car d: "<< car_d;
-            LOG(INFO)<<"Car ID: "<< car[0];
-            LOG(INFO)<<"Car X: "<< car[1];
-            LOG(INFO)<<"Car Y: "<< car[2];
-            LOG(INFO)<<"Car Vx: "<< car[3];
-            LOG(INFO)<<"Car Vy: "<< car[4];
-            LOG(INFO)<<"Car s: "<< car[5];
-            LOG(INFO)<<"Car d: "<< car[6];
-
-
+          LOG(INFO) << "Sensor Fusion Data";
+          for (auto car : sensor_fusion) {
+            // LOG(INFO) << "Car ID: " << car[0];
+            // LOG(INFO) << "Car X: " << car[1];
+            // LOG(INFO) << "Car Y: " << car[2];
+            // LOG(INFO) << "Car Vx: " << car[3];
+            // LOG(INFO) << "Car Vy: " << car[4];
+            // LOG(INFO) << "Car s: " << car[5];
+            // LOG(INFO) << "Car d: " << car[6];
+            nbr_current_state.push_back(nbr_vehicle(
+                car[0], car[1], car[2], car[3], car[4], car[6], car[5]));
           }
 
-
+          auto nbr_predictions =
+              predict.predict_nbr_final_states(nbr_current_state, settings);
+          action a =
+              behavior.next_action(ego_state, nbr_current_state, settings);
+          motion_planner.obstacles = nbr_predictions;
+          vector<vector<double>> path =
+              motion_planner.generate_motion_plan(ego_state, prev_path, a);
 
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
 
-          auto msg = "42[\"control\","+ msgJson.dump()+"]";
+          auto msg = "42[\"control\"," + msgJson.dump() + "]";
 
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-        }  // end "telemetry" if
+        } // end "telemetry" if
       } else {
         // Manual driving
         std::string msg = "42[\"manual\",{}]";
         ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
       }
-    }  // end websocket if
+    } // end websocket if
   }); // end h.onMessage
 
   h.onConnection([&h](uWS::WebSocket<uWS::SERVER> ws, uWS::HttpRequest req) {
@@ -154,6 +175,6 @@ int main() {
     std::cerr << "Failed to listen to port" << std::endl;
     return -1;
   }
-  
+
   h.run();
 }

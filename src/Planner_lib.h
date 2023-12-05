@@ -36,6 +36,9 @@ struct nbr_vehicle {
   double vy;
   double d;
   double s;
+  nbr_vehicle(int num, double x_, double y_, double vx_, double vy_, double d_,
+              double s_)
+      : id(num), x(x_), y(y_), vx(vx_), vy(vy_), d(d_), s(s_){};
 };
 
 struct vehicle_state {
@@ -45,6 +48,9 @@ struct vehicle_state {
   double speed;
   double d;
   double s;
+  vehicle_state(double x_, double y_, double yaw_, double speed_, double d_,
+                double s_)
+      : x(x_), y(y_), yaw(yaw_), speed(speed_), d(d_), s(s_){};
 };
 
 struct config {
@@ -131,14 +137,16 @@ public:
 // Motion PLanner that uses Hybrid A* + Dubins Path
 class MotionPlanner : BehaviourPlanner {
   MotionPlanner(vector<double> map_x, vector<double> map_y,
-                vector<double> map_s)
-      : BehaviourPlanner(map_x, map_y), map_waypoints_s_(map_s){};
+                vector<double> map_s, vector<nbr_vehicle> nbrs)
+      : BehaviourPlanner(map_x, map_y), map_waypoints_s_(map_s),
+        obstacles(nbrs){};
   vector<double> map_waypoints_s_;
 
 public:
-  vector<point> generate_motion_plan(const vehicle_state &localization,
-                                     const vector<point> &prev_plan,
-                                     const action &a);
+  vector<vector<double>>
+  generate_motion_plan(const vehicle_state &localization,
+                       const vector<vector<double>> &prev_plan,
+                       const action &a);
 
   string state2string_round(const State &s);
   string state2string_no_round(const State &s);
@@ -173,6 +181,6 @@ public:
   bool reached_goal(const State &s, const State &goal);
   float cost(const State &start, const State &end, vector<double> &goal);
   bool check_visited(const State &s);
-  vector<point> generate_traj(const unordered_map<string, string> &p,
-                              const string &start, const string &end);
+  vector<vector<double>> generate_traj(const unordered_map<string, string> &p,
+                                       const string &start, const string &end);
 };

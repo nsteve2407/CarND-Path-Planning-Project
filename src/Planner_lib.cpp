@@ -172,14 +172,14 @@ action BehaviourPlanner::next_action(const vehicle_state &localization,
   }
 }
 
-vector<point>
+vector<vector<double>>
 MotionPlanner::generate_motion_plan(const vehicle_state &localization,
-                                    const vector<point> &prev_plan,
+                                    const vector<vector<double>> &prev_plan,
                                     const action &a) {
   // Get goal point from localization info, waypoints and action
   int lane = match_vehicle_to_lane(localization);
   float delta_v = 0.0;
-  float goal_lookup_distance = 30.0;
+  float goal_lookup_distance = 10.0;
 
   if (a == LCL) {
     lane -= 1;
@@ -334,24 +334,29 @@ float MotionPlanner::cost(const State &start, const State &end,
   return cost_;
 }
 
-vector<point>
+vector<vector<double>>
 MotionPlanner::generate_traj(const unordered_map<string, string> &p,
                              const string &start, const string &end) {
   point pt(0.0, 0.0);
-  vector<point> points;
+  vector<double> p_x;
+  vector<double> p_y;
   float x, y;
   string node_id = start;
   string next_node;
-  string2state(node_id, pt.x, pt.y);
-  points.push_back(pt);
+  string2state(node_id, x, y);
+  p_x.push_back(double(x));
+  p_y.push_back(double(y));
+
   while (node_id != end) {
     next_node = optimal_path[node_id];
     string2state(next_node, pt.x, pt.y);
-    points.push_back(pt);
+    p_x.push_back(double(x));
+    p_y.push_back(double(y));
+
     node_id = next_node;
   }
 
-  return points;
+  return {p_x, p_y};
 }
 
 // Rounding based on resolution
@@ -366,7 +371,7 @@ string MotionPlanner::state2string_round(const State &s) {
 string state2string_no_round(const State &s) {
   return to_string(round_to<float>(s.x, 0.01)) + "," +
          to_string(round_to<float>(s.y, 0.01)) + "," +
-         to_string(round_to<float>(s.theta, 0.01)) ",";
+         to_string(round_to<float>(s.theta, 0.01)) + ",";
 }
 
 void string2state(const string &s, float &x, float &y) {
