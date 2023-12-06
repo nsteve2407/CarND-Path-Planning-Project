@@ -203,8 +203,7 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
 
   vector<float> limits = {min_x, max_x, min_y, max_y};
 
-  float v = min<float>(localization.speed + delta_v, 50.0 * 0.277);
-  v = max<float>(localization.speed + delta_v, 0.277);
+  float v;
 
   priority_queue<node, vector<node>, CompareNode> pq;
 
@@ -218,13 +217,15 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
   pq.push(node(0.0, start_state));
   string start_state_id = state2string_round(start_state);
 
-  float node_cost = 1000000.0;
-  float node_min_cost = 1000000.0;
-
   State dest(0.0, 0.0, 0.0, 0.0, -1);
   string node_id, node_id_start;
   string optimal_child_node_id;
   while (pq.size() > 0) {
+    v = min<float>(localization.speed + delta_v, 50.0 * 0.447);
+    v = max<float>(localization.speed + delta_v, 0.447);
+
+    float node_cost = 1000000.0;
+    float node_min_cost = 1000000.0;
     auto n = pq.top();
     pq.pop();
     node_id_start = state2string_no_round(n.state_);

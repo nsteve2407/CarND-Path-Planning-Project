@@ -2,6 +2,8 @@
 #include "helpers.h"
 #include <bits/stdc++.h>
 #include <cmath>
+#include <iomanip> // Include the header for setprecision
+#include <sstream>
 #include <unordered_map>
 #include <vector>
 
@@ -20,7 +22,7 @@ struct State {
   float v;
   int prev_action; // What action was taken to reach this state:
                    // {0,1,2}{left,straight,right}
-  float min_obst_dist = 100000.0;
+  float min_obst_dist = 7000.0;
   State(float x_, float y_, float theta_, float v_, int action_)
       : x(x_), y(y_), theta(theta_), v(v_), prev_action(action_){};
 };
@@ -66,8 +68,8 @@ struct vehicle_state {
 };
 
 struct config {
-  float prediction_horizon;   // secs
-  float time_resolution;      // secs
+  float prediction_horizon;     // secs
+  float time_resolution = 0.02; // secs
   float safety_window = 15.0; // meters in Frenet (s, i.e lenght along the path)
 };
 
@@ -81,7 +83,7 @@ enum action { KLSU, KLSD, LCL, LCR };
 
 class Prediction {
 public:
-  Prediction();
+  Prediction(){};
   bool predict_one_step_constant_velocity(const nbr_vehicle &start_state,
                                           nbr_vehicle &next_state,
                                           const config &settings);
@@ -153,14 +155,14 @@ public:
   void string2state(const string &s, float &x, float &y);
 
   // private:
-  float res_x = 1.0;
-  float res_y = 1.0;
-  float res_theta = 10.0 * (180 / 3.14);
-  float turn_radius = 8.0;
+  float res_x = 0.1;
+  float res_y = 0.1;
+  float res_theta = 5 * (3.14f / 180.0f);
+  float turn_radius = 10.0;
   float action_change_cost_ = 4.0;
-  float obstacle_distacne_cost_wt_ = 10.0;
-  float h_cost_wt_ = 6.0;
-  float dt_ = 0.02;
+  float obstacle_distacne_cost_wt_ = 6.0;
+  float h_cost_wt_ = 20.0;
+  float dt_ = 0.04;
 
   unordered_map<string, float> seen_;
   unordered_map<string, string> optimal_path;
@@ -202,10 +204,21 @@ bool Prediction::predict_one_step_constant_velocity(
     const nbr_vehicle &start_state, nbr_vehicle &next_state,
     const config &settings) {
   try {
-    nbr_vehicle next_state = start_state;
+    next_state.id = start_state.id;
+
     // Constat Velocity propogation
-    next_state.x = next_state.x + next_state.vx * settings.time_resolution;
-    next_state.y = next_state.y + next_state.vy * settings.time_resolution;
+    next_state.x = start_state.x + start_state.vx * settings.time_resolution;
+    next_state.y = start_state.y + start_state.vy * settings.time_resolution;
+    next_state.vx = start_state.vx;
+    next_state.vx = start_state.vy;
+
+    LOG(INFO) << "(step) Input state vx=" << start_state.vx;
+    LOG(INFO) << "(step) Input state vy=" << start_state.vy;
+    LOG(INFO) << "(step) Calculated ns id=" << next_state.id;
+    LOG(INFO) << "(step) Calculated ns x=" << next_state.x;
+    LOG(INFO) << "(step) Calculated ns y=" << next_state.y;
+    LOG(INFO) << "(step) Calculated ns vx=" << next_state.vx;
+    LOG(INFO) << "(step) Calculated ns vy=" << next_state.vy;
 
     // To do : Frenet update
 
@@ -226,10 +239,17 @@ Prediction::predict_single_vehicle_states(const nbr_vehicle &current_state,
   nbr_vehicle state = current_state;
   nbr_vehicle next_state;
   bool success;
+  LOG(INFO) << "First iteration ! aka source state:" << state.id;
 
   for (int i = 0; i < state_predictions.size(); i++) {
     success = predict_one_step_constant_velocity(state, next_state, settings);
-    state_predictions[0] = next_state;
+    LOG(INFO) << "State ID:" << state.id;
+    LOG(INFO) << "State x:" << state.x;
+    LOG(INFO) << "State y:" << state.y;
+    LOG(INFO) << "Next-State ID:" << next_state.id;
+    LOG(INFO) << "Next-State x:" << next_state.x;
+    LOG(INFO) << "Next-State y:" << next_state.y;
+    state_predictions[i] = next_state;
     state = next_state;
   }
 
@@ -267,6 +287,8 @@ Prediction::predict_nbr_final_states(const vector<nbr_vehicle> &current_state,
 }
 
 int BehaviourPlanner::match_vehicle_to_lane(const nbr_vehicle &vehicle_state) {
+  LOG(INFO) << "Vehice d:" << vehicle_state.d;
+
   if (vehicle_state.d < 0.0 || vehicle_state.d > 12.0) {
     return -1; // Oncoming traffic
   }
@@ -274,14 +296,16 @@ int BehaviourPlanner::match_vehicle_to_lane(const nbr_vehicle &vehicle_state) {
   else if (vehicle_state.d > 0.0 && vehicle_state.d < 4.0) {
     return 0; // Left lane
   } else if (vehicle_state.d > 4.0 && vehicle_state.d < 8.0) {
-    return 0; // Middle lane traffic
+    return 1; // Middle lane traffic
   } else if (vehicle_state.d > 8.0 && vehicle_state.d < 12.0) {
-    return 0; // Right lane traffic
+    return 2; // Right lane traffic
   }
 }
 
 int BehaviourPlanner::match_vehicle_to_lane(
     const vehicle_state &vehicle_state) {
+  LOG(INFO) << "Vehice d:" << vehicle_state.d;
+
   if (vehicle_state.d < 0.0 || vehicle_state.d > 12.0) {
     return -1; // Oncoming traffic
   }
@@ -289,9 +313,9 @@ int BehaviourPlanner::match_vehicle_to_lane(
   else if (vehicle_state.d > 0.0 && vehicle_state.d < 4.0) {
     return 0; // Left lane
   } else if (vehicle_state.d > 4.0 && vehicle_state.d < 8.0) {
-    return 0; // Middle lane traffic
+    return 1; // Middle lane traffic
   } else if (vehicle_state.d > 8.0 && vehicle_state.d < 12.0) {
-    return 0; // Right lane traffic
+    return 2; // Right lane traffic
   }
 }
 
@@ -313,16 +337,23 @@ action BehaviourPlanner::next_action(const vehicle_state &localization,
                                      const vector<nbr_vehicle> &nbrs_last_state,
                                      const config &settings) {
   currnet_vehicle_lane = match_vehicle_to_lane(localization);
+  LOG(INFO) << "Matched ego vehicle to lane:" << currnet_vehicle_lane;
   vector<bool> lane_blocked_status = {false, false, false};
 
   for (auto vehicle : nbrs_last_state) {
     int lane = match_vehicle_to_lane(vehicle);
-    if (!lane_blocked_status[lane]) {
-      if (in_safety_window(localization, vehicle, settings)) {
-        lane_blocked_status[lane] = true;
+    LOG(INFO) << "Matched NBR vehicle to lane:" << lane;
+
+    if (lane != -1) {
+      if (!lane_blocked_status[lane]) {
+        if (in_safety_window(localization, vehicle, settings)) {
+          lane_blocked_status[lane] = true;
+        }
       }
     }
   }
+  LOG(INFO) << "Lane matching done";
+
   // If current lane not blocked
   if (!lane_blocked_status[currnet_vehicle_lane]) {
     return KLSU; // Keep Lane Speed Up
@@ -340,6 +371,8 @@ action BehaviourPlanner::next_action(const vehicle_state &localization,
       }
     }
 
+    LOG(INFO) << "Current lane check done";
+
     // If Left lane check center
     if (currnet_vehicle_lane == 0) {
       if (!lane_blocked_status[1]) {
@@ -348,6 +381,8 @@ action BehaviourPlanner::next_action(const vehicle_state &localization,
         return KLSD; // Keep Lane Slow down
       }
     }
+    LOG(INFO) << "Left lane check done";
+
     // If right lane check center
     if (currnet_vehicle_lane == 2) {
       if (!lane_blocked_status[1]) {
@@ -356,6 +391,7 @@ action BehaviourPlanner::next_action(const vehicle_state &localization,
         return KLSD; // Keep Lane Slow down
       }
     }
+    LOG(INFO) << "Right lane check done";
   }
 }
 
@@ -368,6 +404,8 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
   float delta_v = 0.0;
   float goal_lookup_distance = 10.0;
 
+  LOG(INFO) << "(MPL) Ego lane:" << lane;
+
   if (a == LCL) {
     lane -= 1;
   } else if (a == LCR) {
@@ -377,6 +415,8 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
   } else {
     delta_v = -0.224;
   }
+
+  LOG(INFO) << "(MPL) Delta v:" << delta_v;
 
   // goal as (x,y,theta)
   vector<double> goal_state =
@@ -388,7 +428,8 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
   float min_y = min<float>(float(goal_state[1]), localization.y);
   float max_y = max<float>(float(goal_state[1]), localization.y);
 
-  vector<float> limits = {min_x, max_x, min_y, max_y};
+  vector<float> limits = {min_x - 1.0f, max_x + 1.0f, min_y - 1.0f,
+                          max_y + 1.0f};
 
   float v = min<float>(localization.speed + delta_v, 50.0 * 0.277);
   v = max<float>(localization.speed + delta_v, 0.277);
@@ -398,12 +439,21 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
   State start_state =
       State(localization.x, localization.y, localization.yaw, v, -1);
 
+  LOG(INFO) << "(MPL) Start state :" << start_state.x << ", " << start_state.y
+            << ", " << start_state.theta;
+
   State goal_state_f =
-      State(goal_state[0], goal_state[1], goal_state[2], v, -1);
+      State(goal_state[0], goal_state[1], start_state.theta, v, -1);
+  LOG(INFO) << "(MPL) Goal state :" << goal_state_f.x << ", " << goal_state_f.y
+            << ", " << goal_state_f.theta;
+
   string goal_state_id = state2string_round(goal_state_f);
+
+  LOG(INFO) << "(MPL) Goal state id: " << goal_state_id;
 
   pq.push(node(0.0, start_state));
   string start_state_id = state2string_round(start_state);
+  LOG(INFO) << "(MPL) Start state id: " << start_state_id;
 
   float node_cost = 1000000.0;
   float node_min_cost = 1000000.0;
@@ -412,20 +462,37 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
   string node_id, node_id_start;
   string optimal_child_node_id;
   while (pq.size() > 0) {
+    float node_cost = 1000000.0;
+    float node_min_cost = 1000000.0;
     auto n = pq.top();
     pq.pop();
     node_id_start = state2string_no_round(n.state_);
+    LOG(INFO) << "(MPL) Popped node id: " << node_id_start;
+    LOG(INFO) << "(MPL) Velocity v: " << v;
 
     for (int action = 0; action < 3; action++) {
       dest = dubins_trasition_function(n.state_, v, action, turn_radius);
+      LOG(INFO) << "(MPL) Take action:" << action;
+      LOG(INFO) << "(MPL) Dest node (dubins):" << dest.x << ", " << dest.y
+                << ", " << dest.theta;
+
       dest.prev_action = action;
       // Convert to string
       node_id = state2string_round(dest);
+      LOG(INFO) << "(MPL) Dest node id: " << node_id;
+
       // Check if valid
-      if (check_valid(dest, limits)) {
+      LOG(INFO) << "Limits: x_min,x_max" << limits[0] << ", " << limits[1];
+      LOG(INFO) << "Limits: y_min,y_max" << limits[2] << ", " << limits[3];
+      auto valid = check_valid(dest, limits);
+      LOG(INFO) << "State is valid? :" << valid;
+      if (valid) {
+        LOG(INFO) << "(MPL) Node id " << node_id << "is valid: ";
 
         // Check if reached goal
         if (reached_goal(dest, goal_state_f)) {
+          LOG(INFO) << "(MPL) Reached goal state";
+
           optimal_path[node_id_start] = state2string_no_round(dest);
           return generate_traj(optimal_path, start_state_id, goal_state_id);
         }
@@ -433,14 +500,23 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
         // Caculate cost
         node_cost = n.wt_ + cost(n.state_, dest, goal_state);
 
+        LOG(INFO) << "(MPL) Node cost: " << node_cost;
+
         // Check if visited
         if (seen_.find(node_id) == seen_.end()) {
+          LOG(INFO) << "(MPL) Node id " << node_id << " not seen before";
+
           // Not see before so add
           seen_[node_id] = node_cost;
           pq.push(node(node_cost, dest));
           // If visited compare costs and adjust cost and parent to min
         } else {
+          LOG(INFO) << "(MPL) Node id " << node_id << " has been seen before";
           if (node_cost < seen_[node_id]) {
+            LOG(INFO) << "(MPL) Node id " << node_id
+                      << " current cost: " << node_cost
+                      << " Previous cost: " << seen_[node_id];
+
             seen_[node_id] = node_cost;
             // Add to pq if fist time or if modified update the pq value?
             pq.push(node(node_cost, dest));
@@ -452,8 +528,19 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
         }
       }
     }
+    LOG(INFO) << "Start node: " << node_id_start;
+    LOG(INFO) << "Optimal child node: " << optimal_child_node_id;
+    LOG(INFO) << "(MPL) Goal state id: " << goal_state_id;
+
     optimal_path[node_id_start] = optimal_child_node_id;
+    v = min<float>(v + delta_v, 50.0 * 0.277);
+    v = max<float>(v + delta_v, 0.277);
   }
+
+  LOG(ERROR) << "(MPL) Did not reach goal state";
+
+  optimal_path[node_id_start] = state2string_no_round(dest);
+  return generate_traj(optimal_path, start_state_id, goal_state_id);
 }
 
 State MotionPlanner::dubins_trasition_function(const State &start, float v,
@@ -487,16 +574,23 @@ State MotionPlanner::dubins_trasition_function(const State &start, float v,
   }
 }
 
-bool MotionPlanner::check_valid(State &State, vector<float> &limits) {
-  if (State.x > limits[0] && State.x < limits[1] && State.y > limits[2] &&
-      State.y < limits[3]) {
+bool MotionPlanner::check_valid(State &s, vector<float> &limits) {
+  if (s.x > limits[0] && s.x < limits[1] && s.y > limits[2] &&
+      s.y < limits[3]) {
+
+    LOG(INFO) << "State within search bounds";
+    LOG(INFO) << "State initial min obj distance:" << s.min_obst_dist;
+
     for (auto car : obstacles) {
-      State.min_obst_dist = min<float>(
-          State.min_obst_dist, distance(State.x, State.y, car.x, car.y));
+      s.min_obst_dist =
+          min<float>(s.min_obst_dist, distance(s.x, s.y, car.x, car.y));
     }
-    if (State.min_obst_dist < 3.0) {
-      return true;
+    LOG(INFO) << "State final min obj distance:" << s.min_obst_dist;
+
+    if (s.min_obst_dist < 3.0) {
+      return false;
     }
+    return true;
   }
   return false;
 }
@@ -547,21 +641,53 @@ MotionPlanner::generate_traj(const unordered_map<string, string> &p,
 }
 
 // Rounding based on resolution
+// string MotionPlanner::state2string_round(const State &s) {
+//   float x = round(s.x / res_x) * res_x;
+//   float y = round(s.y / res_y) * res_y;
+//   LOG(INFO) << "[Conversion] input x:" << s.x;
+//   LOG(INFO) << "[Conversion] onput x:" << x;
+//   LOG(INFO) << "[Conversion] onput string x:" << to_string(x);
+//   LOG(INFO) << "[Conversion] input y:" << s.y;
+//   LOG(INFO) << "[Conversion] onput y:" << y;
+//   LOG(INFO) << "[Conversion] onput string y:" << to_string(y);
+
+//   float theta = round(s.theta / res_theta) * res_theta;
+
+//   return to_string(x) + "," + to_string(y) + "," + to_string(theta);
+// }
+
 string MotionPlanner::state2string_round(const State &s) {
   float x = round(s.x / res_x) * res_x;
   float y = round(s.y / res_y) * res_y;
+  // LOG(INFO) << "[Conversion] input x:" << s.x;
+  // LOG(INFO) << "[Conversion] output x:" << x;
+  // LOG(INFO)
+  // << "[Conversion] output string x:" << std::fixed << std::setprecision(2)
+  //     << x; // Set precision to 2 decimal places and use fixed-point notation
+  // LOG(INFO) << "[Conversion] input y:" << s.y;
+  // LOG(INFO) << "[Conversion] output y:" << y;
+  // LOG(INFO)
+  //     << "[Conversion] output string y:" << std::fixed <<
+  //     std::setprecision(2)
+  // << y; // Set precision to 2 decimal places and use fixed-point notation
+
   float theta = round(s.theta / res_theta) * res_theta;
 
-  return to_string(x) + "," + to_string(y) + "," + to_string(theta);
+  std::ostringstream oss; // Create a stringstream for concatenating strings
+  oss << std::fixed << std::setprecision(2) << x << "," << y << ","
+      << theta; // Set precision to 2 decimal places and use fixed-point
+                // notation for the entire string
+
+  return oss.str(); // Convert stringstream to string and return
 }
 
-string state2string_no_round(const State &s) {
+string MotionPlanner::state2string_no_round(const State &s) {
   return to_string(round_to<float>(s.x, 0.01)) + "," +
          to_string(round_to<float>(s.y, 0.01)) + "," +
          to_string(round_to<float>(s.theta, 0.01)) + ",";
 }
 
-void string2state(const string &s, float &x, float &y) {
+void MotionPlanner::string2state(const string &s, float &x, float &y) {
   stringstream ss(s);
 
   // Temporary string to hold each token

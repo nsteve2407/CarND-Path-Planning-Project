@@ -2,7 +2,6 @@
 #include "Eigen-3.3/Eigen/QR"
 #include "Planner_lib.h"
 #include "glog/logging.h"
-#include "helpers.h"
 #include "json.hpp"
 #include <fstream>
 #include <iostream>
@@ -62,9 +61,9 @@ int main() {
   vector<nbr_vehicle> nbr_current_state;
 
   MotionPlanner motion_planner(map_waypoints_x, map_waypoints_y,
-                               map_waypoints_s);
+                               map_waypoints_s, nbr_current_state);
 
-  std::ifstream in_map_(map_file_.c_str(), std::ifstream::in);
+  // std::ifstream in_map_(map_file_.c_str(), std::ifstream::in);
 
   h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s,
                &map_waypoints_dx, &map_waypoints_dy, &nbr_current_state,
@@ -135,13 +134,33 @@ int main() {
                 car[0], car[1], car[2], car[3], car[4], car[6], car[5]));
           }
 
-          auto nbr_predictions =
-              predict.predict_nbr_final_states(nbr_current_state, settings);
+          // auto nbr_predictions =
+          //     predict.predict_nbr_final_states(nbr_current_state, settings);
+          // LOG(INFO) << "Predictions generated: " << nbr_predictions.size();
+          // if (nbr_predictions.size() > 0) {
+          //   LOG(INFO) << "Dummy prediction x: " << nbr_predictions[0].x;
+          //   LOG(INFO) << "Dummy prediction y: " << nbr_predictions[0].y;
+          //   LOG(INFO) << "Dummy prediction ID: " << nbr_predictions[0].id;
+          //   LOG(INFO) << "Dummy prediction x: "
+          //             << nbr_predictions[nbr_predictions.size() - 1].x;
+          //   LOG(INFO) << "Dummy prediction y: "
+          //             << nbr_predictions[nbr_predictions.size() - 1].y;
+          //   LOG(INFO) << "Dummy prediction ID: "
+          //             << nbr_predictions[nbr_predictions.size() - 1].id;
+          // }
+
           action a =
               behavior.next_action(ego_state, nbr_current_state, settings);
-          motion_planner.obstacles = nbr_predictions;
+          LOG(INFO) << "Behavior plan generated: " << (int)a;
+
+          motion_planner.obstacles = nbr_current_state;
           vector<vector<double>> path =
               motion_planner.generate_motion_plan(ego_state, prev_path, a);
+
+          LOG(INFO) << "Motion plan generated points: " << path.size();
+
+          next_x_vals = path[0];
+          next_y_vals = path[1];
 
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
@@ -149,6 +168,7 @@ int main() {
           auto msg = "42[\"control\"," + msgJson.dump() + "]";
 
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+          exit(-1);
         } // end "telemetry" if
       } else {
         // Manual driving
