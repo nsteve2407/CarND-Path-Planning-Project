@@ -157,7 +157,7 @@ int main() {
           vector<vector<double>> path =
               motion_planner.generate_motion_plan(ego_state, prev_path, a);
 
-          LOG(INFO) << "Motion plan generated points: " << path.size();
+          LOG(INFO) << "Motion plan generated points: " << path[0].size();
 
           next_x_vals = path[0];
           next_y_vals = path[1];
@@ -168,7 +168,7 @@ int main() {
           auto msg = "42[\"control\"," + msgJson.dump() + "]";
 
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-          exit(-1);
+          // exit(-1);
         } // end "telemetry" if
       } else {
         // Manual driving

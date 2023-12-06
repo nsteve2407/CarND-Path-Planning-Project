@@ -1,5 +1,6 @@
 #include "glog/logging.h"
 #include "helpers.h"
+#include <algorithm>
 #include <bits/stdc++.h>
 #include <cmath>
 #include <iomanip> // Include the header for setprecision
@@ -23,15 +24,18 @@ struct State {
   int prev_action; // What action was taken to reach this state:
                    // {0,1,2}{left,straight,right}
   float min_obst_dist = 7000.0;
+  State(){};
   State(float x_, float y_, float theta_, float v_, int action_)
       : x(x_), y(y_), theta(theta_), v(v_), prev_action(action_){};
 };
 
 class node {
 public:
-  node(float wt, State s) : wt_(wt), state_(s){};
+  // node(float wt, State s, node &p) : wt_(wt), state_(s), parent(&p){};
+  node() : parent(nullptr){};
   float wt_;
   State state_;
+  shared_ptr<node> parent;
 };
 
 struct CompareNode {
@@ -185,6 +189,8 @@ public:
   bool check_visited(const State &s);
   vector<vector<double>> generate_traj(const unordered_map<string, string> &p,
                                        const string &start, const string &end);
+  vector<vector<double>> generate_traj(shared_ptr<node> &goal_node,
+                                       vector<shared_ptr<node>> &nodes);
 };
 
 // Addinng function definitions here (not best practice)
@@ -447,12 +453,20 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
   LOG(INFO) << "(MPL) Goal state :" << goal_state_f.x << ", " << goal_state_f.y
             << ", " << goal_state_f.theta;
 
-  string goal_state_id = state2string_round(goal_state_f);
+  string goal_state_id = state2string_no_round(goal_state_f);
 
   LOG(INFO) << "(MPL) Goal state id: " << goal_state_id;
 
-  pq.push(node(0.0, start_state));
-  string start_state_id = state2string_round(start_state);
+  shared_ptr<node> start(new node);
+  start->state_ = start_state;
+  start->parent = nullptr;
+  start->wt_ = 0.0;
+
+  vector<shared_ptr<node>> nodes;
+  nodes.push_back(start);
+
+  pq.push(*start);
+  string start_state_id = state2string_no_round(start_state);
   LOG(INFO) << "(MPL) Start state id: " << start_state_id;
 
   float node_cost = 1000000.0;
@@ -464,14 +478,20 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
   while (pq.size() > 0) {
     float node_cost = 1000000.0;
     float node_min_cost = 1000000.0;
-    auto n = pq.top();
+
+    const node &current_node_ref = pq.top();
+
+    // Create a shared_ptr and copy the element
+    shared_ptr<node> current_node = make_shared<node>(current_node_ref);
+
     pq.pop();
-    node_id_start = state2string_no_round(n.state_);
+    node_id_start = state2string_no_round(current_node->state_);
     LOG(INFO) << "(MPL) Popped node id: " << node_id_start;
     LOG(INFO) << "(MPL) Velocity v: " << v;
 
     for (int action = 0; action < 3; action++) {
-      dest = dubins_trasition_function(n.state_, v, action, turn_radius);
+      dest = dubins_trasition_function(current_node->state_, v, action,
+                                       turn_radius);
       LOG(INFO) << "(MPL) Take action:" << action;
       LOG(INFO) << "(MPL) Dest node (dubins):" << dest.x << ", " << dest.y
                 << ", " << dest.theta;
@@ -494,11 +514,23 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
           LOG(INFO) << "(MPL) Reached goal state";
 
           optimal_path[node_id_start] = state2string_no_round(dest);
-          return generate_traj(optimal_path, start_state_id, goal_state_id);
+          // return generate_traj(optimal_path, start_state_id,
+          //                      state2string_no_round(dest));
+          shared_ptr<node> child(new node);
+          // shared_ptr<node> parent_pt(&n);
+          // child->parent = parent_pt;
+          child->parent = current_node;
+          child->wt_ = 0.0;
+          child->state_ = dest;
+          nodes.push_back(child);
+          // node final_node(0.0, dest, &n);
+          LOG(INFO) << "(MPL) Start trajectory generation";
+          return generate_traj(child, nodes);
         }
 
         // Caculate cost
-        node_cost = n.wt_ + cost(n.state_, dest, goal_state);
+        node_cost =
+            current_node->wt_ + cost(current_node->state_, dest, goal_state);
 
         LOG(INFO) << "(MPL) Node cost: " << node_cost;
 
@@ -508,7 +540,14 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
 
           // Not see before so add
           seen_[node_id] = node_cost;
-          pq.push(node(node_cost, dest));
+          shared_ptr<node> child(new node);
+          // shared_ptr<node> parent_pt(&n);
+          // child->parent = parent_pt;
+          child->parent = current_node;
+          child->wt_ = node_cost;
+          child->state_ = dest;
+          pq.push(*child);
+          nodes.push_back(child);
           // If visited compare costs and adjust cost and parent to min
         } else {
           LOG(INFO) << "(MPL) Node id " << node_id << " has been seen before";
@@ -518,8 +557,16 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
                       << " Previous cost: " << seen_[node_id];
 
             seen_[node_id] = node_cost;
-            // Add to pq if fist time or if modified update the pq value?
-            pq.push(node(node_cost, dest));
+            shared_ptr<node> child(new node);
+            // shared_ptr<node> parent_pt(&n);
+            // child->parent = &parent_pt;
+            // child->parent = parent_pt;
+            child->parent = current_node;
+            child->wt_ = node_cost;
+            child->state_ = dest;
+            pq.push(*child);
+            nodes.push_back(child);
+            // pq.push(node(node_cost, dest, &n));
           }
         }
         if (node_cost < node_min_cost) {
@@ -528,8 +575,8 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
         }
       }
     }
-    LOG(INFO) << "Start node: " << node_id_start;
-    LOG(INFO) << "Optimal child node: " << optimal_child_node_id;
+    LOG(INFO) << "----Adding key node: " << node_id_start;
+    LOG(INFO) << "-----Add value:Optimal child node: " << optimal_child_node_id;
     LOG(INFO) << "(MPL) Goal state id: " << goal_state_id;
 
     optimal_path[node_id_start] = optimal_child_node_id;
@@ -537,10 +584,10 @@ MotionPlanner::generate_motion_plan(const vehicle_state &localization,
     v = max<float>(v + delta_v, 0.277);
   }
 
-  LOG(ERROR) << "(MPL) Did not reach goal state";
-
-  optimal_path[node_id_start] = state2string_no_round(dest);
-  return generate_traj(optimal_path, start_state_id, goal_state_id);
+  LOG(FATAL) << "(MPL) Did not reach goal state";
+  exit(-1);
+  // optimal_path[node_id_start] = state2string_round(dest);
+  // return generate_traj(optimal_path, start_state_id, goal_state_id);
 }
 
 State MotionPlanner::dubins_trasition_function(const State &start, float v,
@@ -628,8 +675,17 @@ MotionPlanner::generate_traj(const unordered_map<string, string> &p,
   p_x.push_back(double(x));
   p_y.push_back(double(y));
 
+  // LOG(INFO) << "Current key map:";
+  // for (auto x : p) {
+  // LOG(INFO) << "Key: " << x.first << " Value: " << x.second;
+  // }
+  // LOG(INFO) << "Start search for ids";
+
   while (node_id != end) {
-    next_node = optimal_path[node_id];
+    LOG(INFO) << "Current search id: " << node_id;
+    next_node = optimal_path.at(node_id);
+    LOG(INFO) << "Next node id: " << next_node;
+
     string2state(next_node, pt.x, pt.y);
     p_x.push_back(double(x));
     p_y.push_back(double(y));
@@ -638,6 +694,69 @@ MotionPlanner::generate_traj(const unordered_map<string, string> &p,
   }
 
   return {p_x, p_y};
+}
+
+// vector<vector<double>>
+// MotionPlanner::generate_traj(node &goal_node, vector<shared_ptr<node>>
+// &nodes) {
+//   shared_ptr<node> p(&goal_node);
+
+//   stack<double, vector<double>> stack_x;
+//   stack<double, vector<double>> stack_y;
+
+//   while (p) {
+//     LOG(INFO) << "(MPL) [Traj_gen], #nodes: " << nodes.size();
+//     LOG(INFO) << "(MPL) [Traj_gen], x= " << p->state_.x
+//               << " y= " << p->state_.y;
+//     stack_x.push(p->state_.x);
+//     stack_y.push(p->state_.y);
+//     p = p->parent;
+//   }
+
+//   vector<double> points_x(stack_x.size());
+//   vector<double> points_y(stack_x.size());
+
+//   for (int i = 0; i < points_x.size(); i++) {
+//     points_x.push_back(stack_x.top());
+//     points_y.push_back(stack_y.top());
+//     stack_x.pop();
+//     stack_y.pop();
+//   }
+
+//   return {points_x, points_y};
+// }
+
+vector<vector<double>>
+MotionPlanner::generate_traj(shared_ptr<node> &goal_node,
+                             vector<shared_ptr<node>> &nodes) {
+  vector<double> points_x;
+  vector<double> points_y;
+
+  // Start from the goal node
+  // shared_ptr<node> current = make_shared<node>(goal_node);
+
+  // const node &current_node_ref = goal_node;
+
+  // Create a shared_ptr and copy the element
+  shared_ptr<node> current = goal_node;
+
+  while (current) {
+    LOG(INFO) << "(MPL) [Traj_gen], #nodes: " << nodes.size();
+    LOG(INFO) << "(MPL) [Traj_gen], x= " << current->state_.x
+              << " y= " << current->state_.y;
+
+    points_x.push_back(current->state_.x);
+    points_y.push_back(current->state_.y);
+
+    // Move to the parent node
+    current = current->parent;
+  }
+
+  // Reverse the vectors to get the trajectory from start to goal
+  reverse(points_x.begin(), points_x.end());
+  reverse(points_y.begin(), points_y.end());
+
+  return {points_x, points_y};
 }
 
 // Rounding based on resolution
