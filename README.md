@@ -3,6 +3,8 @@
 ![](https://github.com/nsteve2407/CarND-Path-Planning-Project/blob/9eb2ad8bcc97602d4b6d8afad4197e3e73080dc6/planning-demo.gif)
 
 Video demo of the planning alorithm in action.
+
+TLDR: The main code implementation is in Planning_lib.h, the classes in that file are used in main.cpp
    
 ### Simulator.
 You can download the Term3 Simulator which contains the Path Planning Project from the [releases tab (https://github.com/udacity/self-driving-car-sim/releases/tag/T3_v1.2).  
